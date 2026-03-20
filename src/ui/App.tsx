@@ -54,6 +54,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
   const streamingIdRef = useRef<string | null>(null);
   const [confirmExit, setConfirmExit] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messageQueueRef = useRef<string[]>([]);
 
   // ---- helpers ----
 
@@ -184,13 +185,20 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
             isStreaming: false,
           }));
           streamingIdRef.current = null;
-          setIsLoading(false);
           if (u) {
             setUsage((prev) => ({
               totalInputTokens: prev.totalInputTokens + (u.inputTokens ?? 0),
               totalOutputTokens: prev.totalOutputTokens + (u.outputTokens ?? 0),
               totalCostUsd: prev.totalCostUsd + (u.costUsd ?? 0),
             }));
+          }
+          // Process queued messages
+          const next = messageQueueRef.current.shift();
+          if (next) {
+            // Small delay so the UI can update
+            setTimeout(() => sendToAgent(next), 100);
+          } else {
+            setIsLoading(false);
           }
         },
         onError: (error) => {
@@ -314,16 +322,22 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
     [currentProvider, currentModel, isAutoRoute, usage, addMessage],
   );
 
-  // ---- submit handler ----
+  // ---- submit handler (supports queuing while loading) ----
 
   const handleSubmit = useCallback(
     (text: string) => {
       if (text.startsWith('/')) {
         if (handleSlashCommand(text)) return;
       }
+      if (isLoading) {
+        // Queue the message — will be sent after current agent finishes
+        messageQueueRef.current.push(text);
+        addMessage({ role: 'assistant', content: `Queued: "${text}" — will run after current task.`, provider: 'system' });
+        return;
+      }
       sendToAgent(text);
     },
-    [handleSlashCommand, sendToAgent],
+    [handleSlashCommand, sendToAgent, isLoading, addMessage],
   );
 
   // Kill the active CLI subprocess on unmount

@@ -108,17 +108,16 @@ export async function runAgent(
         const trimmed = line.trim();
         if (!trimmed) return;
 
-        let event: StreamEvent | null = null;
+        let events: StreamEvent[] = [];
         try {
-          event = cliProvider.parseEvent(trimmed);
+          events = cliProvider.parseEvents(trimmed);
         } catch {
-          // Unparseable line -- skip silently
           return;
         }
 
-        if (!event) return;
-
-        dispatch(event);
+        for (const event of events) {
+          dispatch(event);
+        }
       });
     }
 
@@ -207,10 +206,7 @@ export async function runAgent(
           break;
 
         case 'result':
-          if (event.content) {
-            fullText += event.content;
-            onText?.(event.content);
-          }
+          // Usage stats only — text already streamed via 'text' events
           if (event.usage) {
             onFinish?.(event.usage);
           }

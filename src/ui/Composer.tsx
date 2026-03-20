@@ -26,45 +26,30 @@ export function Composer({ onSubmit, isLoading, placeholder, activeProvider }: C
     onSubmit(trimmed);
   };
 
-  if (isLoading) {
-    const providerName = activeProvider ?? 'assistant';
-    const dotColor = activeProvider ? (PROVIDER_COLORS[activeProvider] ?? 'cyan') : 'cyan';
+  const dotColor = activeProvider ? (PROVIDER_COLORS[activeProvider] ?? 'cyan') : 'cyan';
 
-    return (
-      <Box paddingLeft={2} paddingRight={2} marginTop={0}>
-        <Box gap={1}>
+  return (
+    <Box paddingLeft={2} paddingRight={2} flexDirection="column">
+      {isLoading && (
+        <Box gap={1} marginBottom={0}>
           <Text color={dotColor}>
             <Spinner type="dots" />
           </Text>
           <Text dimColor>
-            {providerName} is thinking...
+            {activeProvider ?? 'agent'} is working...
           </Text>
         </Box>
-      </Box>
-    );
-  }
-
-  return (
-    <Box paddingLeft={2} paddingRight={2} marginTop={0}>
+      )}
       <Box flexDirection="row" flexGrow={1}>
         <Text color="cyan" bold>{'> '}</Text>
         <Box flexGrow={1}>
-          {value.length === 0 ? (
-            <TextInput
-              value={value}
-              onChange={setValue}
-              onSubmit={handleSubmit}
-              placeholder={placeholder ?? 'Type a message... (/ for commands)'}
-              focus={true}
-            />
-          ) : (
-            <TextInput
-              value={value}
-              onChange={setValue}
-              onSubmit={handleSubmit}
-              focus={true}
-            />
-          )}
+          <TextInput
+            value={value}
+            onChange={setValue}
+            onSubmit={handleSubmit}
+            placeholder={isLoading ? 'Type to queue next message...' : (placeholder ?? 'Type a message... (/ for commands)')}
+            focus={true}
+          />
         </Box>
       </Box>
     </Box>
