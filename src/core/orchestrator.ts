@@ -6,6 +6,38 @@ import type { ConversationContext } from './context.js';
 import type { StreamEvent } from './providers.js';
 
 // ---------------------------------------------------------------------------
+// Stderr noise filter — non-fatal warnings from CLI subprocesses
+// ---------------------------------------------------------------------------
+
+/** Lines matching any of these patterns are silently ignored on stderr. */
+const STDERR_IGNORE_PATTERNS = [
+  /^mcp:/i,                          // Codex MCP server lifecycle
+  /keytar/i,                         // Gemini keychain module warning
+  /keychain/i,                       // Gemini keychain init error
+  /Cannot find module/i,             // Node native module load failures (non-fatal)
+  /YOLO mode/i,                      // Gemini yolo mode warnings
+  /Loaded cached credentials/i,      // Gemini auth info
+  /Hook registry/i,                  // Gemini hook init info
+  /secureModeEnabled/i,              // Gemini admin policy warnings
+  /goo\.gle/i,                       // Gemini admin URL references
+  /deprecated/i,                     // Deprecation warnings
+  /ExperimentalWarning/i,            // Node experimental feature warnings
+  /punycode/i,                       // Node punycode deprecation
+];
+
+function isStderrNoise(line: string): boolean {
+  return STDERR_IGNORE_PATTERNS.some(p => p.test(line));
+}
+
+function isGenuineError(line: string): boolean {
+  if (isStderrNoise(line)) return false;
+  return (
+    /error|exception|fatal|panic|traceback/i.test(line) &&
+    !/debug|trace|info|warn/i.test(line)
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Callbacks — unchanged public interface
 // ---------------------------------------------------------------------------
 
@@ -247,21 +279,14 @@ function setupPersistentReader(
     activeProvider = null;
   });
 
-  // Forward genuine stderr errors
+  // Forward genuine stderr errors (filter out known non-fatal noise)
   if (child.stderr) {
     const stderrRl = createInterface({ input: child.stderr });
     stderrRl.on('line', (line: string) => {
       const trimmed = line.trim();
       if (!trimmed) return;
-      // Filter out MCP informational lines
-      if (/^mcp:/i.test(trimmed)) return;
-      if (
-        /error|exception|fatal|panic|traceback/i.test(trimmed) &&
-        !/debug|trace|info|warn/i.test(trimmed)
-      ) {
-        activeCallbacks.onError?.(
-          new Error(`[${provider.name} stderr] ${trimmed}`),
-        );
+      if (isGenuineError(trimmed)) {
+        activeCallbacks.onError?.(new Error(`[${provider.name} stderr] ${trimmed}`));
       }
     });
   }
@@ -318,22 +343,14 @@ function readUntilExit(
       });
     }
 
-    // ---- stderr: non-JSON logs from the CLI ----
+    // ---- stderr: filter out known noise, forward genuine errors ----
     if (child.stderr) {
       const stderrRl = createInterface({ input: child.stderr });
-
       stderrRl.on('line', (line: string) => {
         const trimmed = line.trim();
         if (!trimmed) return;
-        // Filter out Codex MCP lines and other informational noise
-        if (/^mcp:/i.test(trimmed)) return;
-        if (
-          /error|exception|fatal|panic|traceback/i.test(trimmed) &&
-          !/debug|trace|info|warn/i.test(trimmed)
-        ) {
-          callbacks.onError?.(
-            new Error(`[${provider.name} stderr] ${trimmed}`),
-          );
+        if (isGenuineError(trimmed)) {
+          callbacks.onError?.(new Error(`[${provider.name} stderr] ${trimmed}`));
         }
       });
     }
