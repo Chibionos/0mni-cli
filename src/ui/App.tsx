@@ -236,22 +236,25 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
       const cmd = parts[0]?.toLowerCase();
 
       switch (cmd) {
+        case '/cc':
         case '/claude':
           setCurrentProvider('claude');
           setCurrentModel(DEFAULT_CONFIG.models.claude);
-          addMessage({ role: 'assistant', content: 'Switched to Claude CLI.', provider: 'system' });
+          addMessage({ role: 'assistant', content: 'Switched to Claude.', provider: 'system' });
           return true;
 
+        case '/ge':
         case '/gemini':
           setCurrentProvider('gemini');
           setCurrentModel(DEFAULT_CONFIG.models.gemini);
-          addMessage({ role: 'assistant', content: 'Switched to Gemini CLI.', provider: 'system' });
+          addMessage({ role: 'assistant', content: 'Switched to Gemini.', provider: 'system' });
           return true;
 
+        case '/co':
         case '/codex':
           setCurrentProvider('codex');
           setCurrentModel(DEFAULT_CONFIG.models.codex);
-          addMessage({ role: 'assistant', content: 'Switched to Codex CLI.', provider: 'system' });
+          addMessage({ role: 'assistant', content: 'Switched to Codex.', provider: 'system' });
           return true;
 
         case '/auto':
@@ -290,41 +293,17 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
           addMessage({ role: 'assistant', content: 'Conversation cleared.', provider: 'system' });
           return true;
 
-        case '/cost': {
-          const costDisplay = usage.totalCostUsd > 0
-            ? `$${usage.totalCostUsd.toFixed(4)}`
-            : 'N/A';
-          addMessage({
-            role: 'assistant',
-            content: [
-              'Session Usage:',
-              `  Input tokens:  ${usage.totalInputTokens.toLocaleString()}`,
-              `  Output tokens: ${usage.totalOutputTokens.toLocaleString()}`,
-              `  Estimated cost: ${costDisplay}`,
-            ].join('\n'),
-            provider: 'system',
-          });
-          return true;
-        }
-
         case '/help':
           addMessage({
             role: 'assistant',
             content: [
-              'Available commands:',
-              '  /claude    - Switch to Claude CLI',
-              '  /gemini    - Switch to Gemini CLI',
-              '  /codex     - Switch to Codex CLI',
+              'Commands:',
+              '  /cc  - Claude    /ge - Gemini    /co - Codex',
               '  /auto      - Toggle auto-routing',
               '  /model [n] - Show or set model',
-              '  /cost      - Show accumulated tokens/cost',
               '  /clear     - Clear conversation',
-              '  /help      - Show this help',
               '',
-              'Keyboard:',
-              '  x / Esc    - Stop running agent',
-              '  Ctrl+C     - Stop agent / Exit (press twice)',
-              '  Enter      - Submit prompt',
+              'Keys: x/Esc = stop agent · Ctrl+C twice = exit',
             ].join('\n'),
             provider: 'system',
           });
@@ -390,7 +369,6 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         autoRoute={isAutoRoute}
         isLoading={isLoading}
         tokenCount={usage.totalInputTokens + usage.totalOutputTokens}
-        costUsd={usage.totalCostUsd}
         yolo={isYolo}
       />
     </Box>
