@@ -1,10 +1,10 @@
 {
-  "name": "0mni-cli",
+  "name": "omni-coder",
   "version": "0.1.0",
   "description": "Multi-agent coding CLI combining Claude, Gemini, and Codex into a single TUI",
   "type": "module",
   "bin": {
-    "0mni": "./bin/0mni.js"
+    "omni": "bin/omni.js"
   },
   "main": "./dist/index.js",
   "files": [
@@ -21,7 +21,7 @@
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run lint && npm run typecheck && npm run build",
-    "start": "node ./bin/0mni.js"
+    "start": "node ./bin/omni.js"
   },
   "keywords": [
     "cli",
@@ -43,7 +43,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Chibionos/0mni-cli.git"
+    "url": "git+https://github.com/Chibionos/0mni-cli.git"
   },
   "homepage": "https://github.com/Chibionos/0mni-cli#readme",
   "bugs": {

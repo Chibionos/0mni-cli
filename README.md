@@ -23,13 +23,13 @@ A TUI coding agent that combines **Claude**, **Gemini**, and **Codex** into a si
 ## Install
 
 ```bash
-npm install -g 0mni-cli
+npm install -g omni-cli
 ```
 
 Or run directly:
 
 ```bash
-npx 0mni-cli "fix the failing tests"
+npx omni-cli "fix the failing tests"
 ```
 
 ## Prerequisites
@@ -46,24 +46,24 @@ You need at least one of these coding agents installed and authenticated:
 
 ```bash
 # Interactive TUI
-0mni
+omni
 
 # Start with a prompt
-0mni "explain this codebase"
+omni "explain this codebase"
 
 # Force a specific provider
-0mni --provider claude "fix the bug"
-0mni -p gemini "search for the error"
-0mni -p codex "refactor the auth module"
+omni --provider claude "fix the bug"
+omni -p gemini "search for the error"
+omni -p codex "refactor the auth module"
 
 # Auto-route to best provider per task
-0mni --auto "find and fix the performance issue"
+omni --auto "find and fix the performance issue"
 
 # Specify a model
-0mni -m claude-opus-4-6 "design the new API"
+omni -m claude-opus-4-6 "design the new API"
 
 # Auto-approve all tool calls
-0mni --yolo "fix all lint errors"
+omni --yolo "fix all lint errors"
 ```
 
 ## Slash Commands
@@ -83,7 +83,7 @@ Inside the TUI, use these commands:
 
 ## Auto-Routing
 
-When `--auto` is enabled, 0mni classifies your task and routes to the best provider:
+When `--auto` is enabled, omni classifies your task and routes to the best provider:
 
 | Task Type | Provider | Why |
 |-----------|----------|-----|
@@ -111,7 +111,7 @@ Each CLI handles its own:
 - Authentication (OAuth, API keys)
 - Sandboxing and permissions
 
-0mni parses the streaming JSON output and displays it in a unified terminal UI.
+omni parses the streaming JSON output and displays it in a unified terminal UI.
 
 ## Skills
 
@@ -119,16 +119,16 @@ Each CLI handles its own:
 
 ```bash
 # Install skills
-0mni skills add vercel-labs/agent-skills
-0mni skills add anthropic/skills
+omni skills add vercel-labs/agent-skills
+omni skills add anthropic/skills
 
 # List installed skills
-0mni skills list
+omni skills list
 ```
 
 ## Configuration
 
-Create `.0mni/config.toml` in your project or `~/.config/0mni/config.toml` globally:
+Create `.omni/config.toml` in your project or `~/.config/omni/config.toml` globally:
 
 ```toml
 defaultProvider = "claude"
