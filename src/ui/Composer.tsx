@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
@@ -7,6 +7,13 @@ const PROVIDER_COLORS: Record<string, string> = {
   claude: '#FF6600',
   gemini: 'magenta',
   codex: '#4A90D9',
+};
+
+// Instant switch commands — trigger on type, no Enter needed
+const INSTANT_COMMANDS: Record<string, string> = {
+  '/cc': '/cc',
+  '/ge': '/ge',
+  '/co': '/co',
 };
 
 export interface ComposerProps {
@@ -18,6 +25,17 @@ export interface ComposerProps {
 
 export function Composer({ onSubmit, isLoading, placeholder, activeProvider }: ComposerProps) {
   const [value, setValue] = useState('');
+
+  const handleChange = useCallback((newValue: string) => {
+    // Check for instant switch commands
+    const lower = newValue.toLowerCase().trim();
+    if (INSTANT_COMMANDS[lower]) {
+      setValue('');
+      onSubmit(INSTANT_COMMANDS[lower]);
+      return;
+    }
+    setValue(newValue);
+  }, [onSubmit]);
 
   const handleSubmit = (text: string) => {
     const trimmed = text.trim();
@@ -45,7 +63,7 @@ export function Composer({ onSubmit, isLoading, placeholder, activeProvider }: C
         <Box flexGrow={1}>
           <TextInput
             value={value}
-            onChange={setValue}
+            onChange={handleChange}
             onSubmit={handleSubmit}
             placeholder={isLoading ? 'Type to queue next message...' : (placeholder ?? 'Type a message... (/ for commands)')}
             focus={true}
