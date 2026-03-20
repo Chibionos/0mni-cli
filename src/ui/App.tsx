@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, useInput, useApp } from 'ink';
-import { StatusBar } from './StatusBar.js';
 import { BottomBar } from './BottomBar.js';
 import { MessageList, type MessageItem } from './MessageList.js';
 import { Composer } from './Composer.js';
@@ -44,7 +43,6 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
   const [isLoading, setIsLoading] = useState(false);
   const [isAutoRoute, setIsAutoRoute] = useState(autoRoute ?? DEFAULT_CONFIG.autoRoute);
   const isYolo = yolo ?? DEFAULT_CONFIG.yolo;
-  const [sessionStartTime] = useState(() => Date.now());
   const [availableProviders] = useState(() => getAvailableProviders());
   const [usage, setUsage] = useState<UsageStats>({
     totalInputTokens: 0,
@@ -348,11 +346,8 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
   }
 
   return (
-    <Box flexDirection="column" minHeight={process.stdout.rows || 24}>
-      <StatusBar sessionStartTime={sessionStartTime} />
-      <Box flexGrow={1} flexDirection="column" paddingX={1}>
-        <MessageList messages={messages} />
-      </Box>
+    <Box flexDirection="column">
+      <MessageList messages={messages} />
       <Composer
         onSubmit={handleSubmit}
         isLoading={isLoading}

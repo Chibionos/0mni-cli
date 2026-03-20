@@ -31,7 +31,7 @@ export function Composer({ onSubmit, isLoading, placeholder, activeProvider }: C
     const dotColor = activeProvider ? (PROVIDER_COLORS[activeProvider] ?? 'cyan') : 'cyan';
 
     return (
-      <Box paddingLeft={2} paddingRight={2} marginTop={1}>
+      <Box paddingLeft={2} paddingRight={2} marginTop={0}>
         <Box gap={1}>
           <Text color={dotColor}>
             <Spinner type="dots" />
@@ -45,7 +45,7 @@ export function Composer({ onSubmit, isLoading, placeholder, activeProvider }: C
   }
 
   return (
-    <Box paddingLeft={2} paddingRight={2} marginTop={1}>
+    <Box paddingLeft={2} paddingRight={2} marginTop={0}>
       <Box flexDirection="row" flexGrow={1}>
         <Text color="cyan" bold>{'> '}</Text>
         <Box flexGrow={1}>
