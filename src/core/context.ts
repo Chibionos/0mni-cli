@@ -107,4 +107,33 @@ export class ConversationContext {
       this.messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0) / 4,
     );
   }
+
+  /**
+   * Build a context summary for handoff between providers.
+   * Includes recent conversation so the new provider has context.
+   */
+  summarizeForHandoff(): string {
+    const msgs = this.messages.filter(m => m.role === 'user' || m.role === 'assistant');
+    if (msgs.length === 0) return '';
+
+    // Take last 10 exchanges max to stay within token limits
+    const recent = msgs.slice(-10);
+    const lines = recent.map(m => {
+      const prefix = m.role === 'user' ? 'User' : `Assistant (${m.provider ?? 'unknown'})`;
+      const text = m.content.length > 300 ? m.content.slice(0, 300) + '...' : m.content;
+      return `${prefix}: ${text}`;
+    });
+
+    return [
+      'Here is the conversation so far (you are continuing from another AI assistant):',
+      '',
+      ...lines,
+      '',
+      'Continue the conversation naturally. The user just switched to you.',
+    ].join('\n');
+  }
+
+  hasMessages(): boolean {
+    return this.messages.length > 0;
+  }
 }

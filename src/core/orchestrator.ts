@@ -410,6 +410,20 @@ export async function runAgent(
   // to the correct set of callbacks for this turn.
   activeCallbacks = callbacks;
 
+  // *** PROVIDER SWITCH: clean up and prepare context handoff ***
+  const isSwitching = activeProvider !== null && activeProvider !== provider;
+  if (isSwitching) {
+    killAgent(); // kills process, resets activeSessionId, activeProvider
+
+    // Inject conversation context so the new provider knows what happened
+    if (context.hasMessages()) {
+      const summary = context.summarizeForHandoff();
+      if (summary) {
+        prompt = `${summary}\n\nUser's new message: ${prompt}`;
+      }
+    }
+  }
+
   // Build spawn options from orchestrator options
   const spawnOpts = {
     model: options.model,
@@ -421,10 +435,6 @@ export async function runAgent(
   // Persistent mode (e.g. Claude)
   // ------------------------------------------------------------------
   if (cliProvider.persistent) {
-    // If we have an existing process but for a different provider, tear it down
-    if (activeProcess && !activeProcess.killed && activeProvider !== provider) {
-      killAgent();
-    }
 
     // Spawn persistent process if needed
     if (!activeProcess || activeProcess.killed) {
@@ -465,14 +475,10 @@ export async function runAgent(
   // Per-turn mode (e.g. Gemini, Codex)
   // ------------------------------------------------------------------
 
-  // Kill any prior process — including persistent Claude process when switching away
+  // Kill any lingering per-turn process from a previous turn (same provider)
   if (activeProcess && !activeProcess.killed) {
-    killAgent();
-  }
-
-  // Reset session ID when switching providers — can't resume across different CLIs
-  if (activeProvider !== provider) {
-    activeSessionId = null;
+    activeProcess.kill('SIGTERM');
+    activeProcess = null;
   }
 
   let child: ChildProcess;
