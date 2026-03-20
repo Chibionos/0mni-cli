@@ -379,12 +379,8 @@ const codexProvider: CLIProvider = {
   spawnTurn(prompt: string, options: SpawnOptions & { sessionId?: string }): ChildProcess {
     const args: string[] = ['exec'];
 
-    // Resume an existing thread or start fresh
-    if (options.sessionId) {
-      args.push('resume', options.sessionId);
-    }
-
-    args.push(prompt, '--json');
+    // Options MUST come before the prompt for codex exec
+    args.push('--json');
 
     if (options.model) {
       args.push('-m', options.model);
@@ -392,6 +388,14 @@ const codexProvider: CLIProvider = {
     if (options.yolo) {
       args.push('-c', 'approval_policy=never');
     }
+
+    // Resume an existing thread or start fresh
+    if (options.sessionId) {
+      args.push('resume', options.sessionId);
+    }
+
+    // Prompt goes LAST
+    args.push(prompt);
 
     return spawn('codex', args, {
       cwd: options.cwd ?? process.cwd(),
