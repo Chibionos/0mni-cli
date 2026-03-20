@@ -17,17 +17,24 @@ export interface MessageListProps {
 
 export function MessageList({ messages }: MessageListProps) {
   return (
-    <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
-      {messages.map((msg) => (
-        <Message
-          key={msg.id}
-          role={msg.role}
-          content={msg.content}
-          provider={msg.provider}
-          toolName={msg.toolName}
-          isStreaming={msg.isStreaming}
-        />
-      ))}
+    <Box flexDirection="column" paddingX={2}>
+      {messages.map((msg, idx) => {
+        // Add a blank spacer line before user messages (except the very first message)
+        const needsSpacer = msg.role === 'user' && idx > 0;
+
+        return (
+          <Box key={msg.id} flexDirection="column">
+            {needsSpacer && <Box marginBottom={1} />}
+            <Message
+              role={msg.role}
+              content={msg.content}
+              provider={msg.provider}
+              toolName={msg.toolName}
+              isStreaming={msg.isStreaming}
+            />
+          </Box>
+        );
+      })}
     </Box>
   );
 }

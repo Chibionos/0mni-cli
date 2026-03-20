@@ -3,13 +3,20 @@ import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 
+const PROVIDER_COLORS: Record<string, string> = {
+  claude: 'blue',
+  gemini: 'green',
+  codex: 'yellow',
+};
+
 export interface ComposerProps {
   onSubmit: (text: string) => void;
   isLoading: boolean;
   placeholder?: string;
+  activeProvider?: string;
 }
 
-export function Composer({ onSubmit, isLoading, placeholder }: ComposerProps) {
+export function Composer({ onSubmit, isLoading, placeholder, activeProvider }: ComposerProps) {
   const [value, setValue] = useState('');
 
   const handleSubmit = (text: string) => {
@@ -19,40 +26,46 @@ export function Composer({ onSubmit, isLoading, placeholder }: ComposerProps) {
     onSubmit(trimmed);
   };
 
-  return (
-    <Box
-      flexDirection="row"
-      borderStyle="single"
-      borderTop={true}
-      borderBottom={false}
-      borderLeft={false}
-      borderRight={false}
-      paddingLeft={1}
-      paddingRight={1}
-    >
-      {isLoading ? (
+  if (isLoading) {
+    const providerName = activeProvider ?? 'assistant';
+    const dotColor = activeProvider ? (PROVIDER_COLORS[activeProvider] ?? 'cyan') : 'cyan';
+
+    return (
+      <Box paddingLeft={2} paddingRight={2} marginTop={1}>
         <Box gap={1}>
-          <Text color="cyan">
+          <Text color={dotColor}>
             <Spinner type="dots" />
           </Text>
-          <Text dimColor>Thinking...</Text>
+          <Text dimColor>
+            {providerName} is thinking...
+          </Text>
         </Box>
-      ) : (
-        <Box flexDirection="row" flexGrow={1}>
-          <Text color="green" bold>{`> `}</Text>
-          <Box flexGrow={1}>
+      </Box>
+    );
+  }
+
+  return (
+    <Box paddingLeft={2} paddingRight={2} marginTop={1}>
+      <Box flexDirection="row" flexGrow={1}>
+        <Text color="cyan" bold>{'> '}</Text>
+        <Box flexGrow={1}>
+          {value.length === 0 ? (
             <TextInput
               value={value}
               onChange={setValue}
               onSubmit={handleSubmit}
-              placeholder={placeholder ?? 'Ask anything...'}
-              focus={!isLoading}
+              placeholder={placeholder ?? 'Type a message... (/ for commands)'}
+              focus={true}
             />
-          </Box>
+          ) : (
+            <TextInput
+              value={value}
+              onChange={setValue}
+              onSubmit={handleSubmit}
+              focus={true}
+            />
+          )}
         </Box>
-      )}
-      <Box marginLeft={2}>
-        <Text dimColor>(Ctrl+C to exit)</Text>
       </Box>
     </Box>
   );

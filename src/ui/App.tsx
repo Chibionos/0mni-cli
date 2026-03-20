@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, useInput, useApp } from 'ink';
 import { StatusBar } from './StatusBar.js';
+import { BottomBar } from './BottomBar.js';
 import { MessageList, type MessageItem } from './MessageList.js';
 import { Composer } from './Composer.js';
 import { WelcomeScreen } from './WelcomeScreen.js';
@@ -43,7 +44,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
   const [isLoading, setIsLoading] = useState(false);
   const [isAutoRoute, setIsAutoRoute] = useState(autoRoute ?? DEFAULT_CONFIG.autoRoute);
   const isYolo = yolo ?? DEFAULT_CONFIG.yolo;
-  const [cwd] = useState(process.cwd());
+  const [sessionStartTime] = useState(() => Date.now());
   const [availableProviders] = useState(() => getAvailableProviders());
   const [usage, setUsage] = useState<UsageStats>({
     totalInputTokens: 0,
@@ -66,24 +67,34 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
     setMessages((prev) => prev.map((m) => (m.id === id ? updater(m) : m)));
   }, []);
 
-  // ---- Ctrl+C: kill agent or exit ----
+  // ---- helper to stop running agent ----
+
+  const stopAgent = useCallback(() => {
+    killAgent();
+    if (streamingIdRef.current) {
+      updateMessage(streamingIdRef.current, (m) => ({
+        ...m,
+        content: m.content + '\n\n[Stopped]',
+        isStreaming: false,
+      }));
+      streamingIdRef.current = null;
+    }
+    setIsLoading(false);
+  }, [updateMessage]);
+
+  // ---- Ctrl+C / Escape: kill agent or exit ----
 
   useInput((_input, key) => {
     if (key.ctrl && _input === 'c') {
       if (isLoading) {
-        killAgent();
-        if (streamingIdRef.current) {
-          updateMessage(streamingIdRef.current, (m) => ({
-            ...m,
-            content: m.content + '\n\n[Stopped]',
-            isStreaming: false,
-          }));
-          streamingIdRef.current = null;
-        }
-        setIsLoading(false);
+        stopAgent();
       } else {
         exit();
       }
+    }
+
+    if (key.escape && isLoading) {
+      stopAgent();
     }
   });
 
@@ -285,6 +296,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
               '',
               'Keyboard:',
               '  Ctrl+C     - Stop running agent / Exit',
+              '  Escape     - Stop running agent',
               '  Enter      - Submit prompt',
             ].join('\n'),
             provider: 'system',
@@ -329,24 +341,29 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
     return <WelcomeScreen availableProviders={availableProviders} />;
   }
 
-  const tokenCount = contextRef.current.getTokenEstimate();
-
   return (
-    <Box flexDirection="column" height="100%">
-      <StatusBar
-        provider={currentProvider}
-        model={currentModel}
-        cwd={cwd}
-        tokenCount={tokenCount}
-        autoRoute={isAutoRoute}
-      />
-      <Box flexGrow={1} flexDirection="column" overflow="hidden">
+    <Box flexDirection="column" minHeight={process.stdout.rows || 24}>
+      <StatusBar sessionStartTime={sessionStartTime} />
+      <Box flexGrow={1} flexDirection="column" paddingX={1}>
         <MessageList messages={messages} />
       </Box>
       <Composer
         onSubmit={handleSubmit}
         isLoading={isLoading}
-        placeholder={isAutoRoute ? 'Ask anything (auto-routing)...' : `Ask ${currentProvider}...`}
+        placeholder={
+          isAutoRoute
+            ? 'Ask anything (auto-routing)...'
+            : `Ask ${currentProvider}...`
+        }
+      />
+      <BottomBar
+        provider={currentProvider}
+        model={currentModel}
+        autoRoute={isAutoRoute}
+        isLoading={isLoading}
+        tokenCount={usage.totalInputTokens + usage.totalOutputTokens}
+        costUsd={usage.totalCostUsd}
+        yolo={isYolo}
       />
     </Box>
   );

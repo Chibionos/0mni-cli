@@ -1,31 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 
 export interface StatusBarProps {
-  provider: string;
-  model: string;
-  cwd: string;
-  tokenCount?: number;
-  autoRoute?: boolean;
+  sessionStartTime: number;
 }
 
-const PROVIDER_COLORS: Record<string, string> = {
-  claude: 'blue',
-  gemini: 'green',
-  codex: 'yellow',
-};
-
-function abbreviatePath(fullPath: string): string {
-  const home = process.env['HOME'] ?? '';
-  if (home && fullPath.startsWith(home)) {
-    return '~' + fullPath.slice(home.length);
-  }
-  return fullPath;
+function formatElapsed(startTime: number): string {
+  const seconds = Math.floor((Date.now() - startTime) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${secs}s`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m`;
 }
 
-export function StatusBar({ provider, model, cwd, tokenCount, autoRoute }: StatusBarProps) {
-  const displayPath = abbreviatePath(cwd);
-  const dotColor = PROVIDER_COLORS[provider] ?? 'white';
+export function StatusBar({ sessionStartTime }: StatusBarProps) {
+  const [elapsed, setElapsed] = useState(() => formatElapsed(sessionStartTime));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(formatElapsed(sessionStartTime));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sessionStartTime]);
 
   return (
     <Box
@@ -39,24 +38,8 @@ export function StatusBar({ provider, model, cwd, tokenCount, autoRoute }: Statu
       paddingLeft={1}
       paddingRight={1}
     >
-      <Box gap={2}>
-        <Text bold color="cyan">0mni</Text>
-        <Box gap={1}>
-          <Text color={dotColor}>{'\u25CF'}</Text>
-          <Text dimColor>
-            {provider} · {model}
-          </Text>
-        </Box>
-        {autoRoute && (
-          <Text color="magenta">[auto]</Text>
-        )}
-      </Box>
-      <Box gap={2}>
-        <Text dimColor>{displayPath}</Text>
-        {tokenCount !== undefined && tokenCount > 0 && (
-          <Text dimColor>~{tokenCount.toLocaleString()} tokens</Text>
-        )}
-      </Box>
+      <Text bold color="cyan">omni</Text>
+      <Text dimColor>Cooked for {elapsed}</Text>
     </Box>
   );
 }
