@@ -93,6 +93,7 @@ export function BottomBar({
       borderRight={false}
       paddingLeft={1}
       paddingRight={1}
+      overflow="hidden"
     >
       {/* Line 1 */}
       <Box flexDirection="row" justifyContent="space-between">

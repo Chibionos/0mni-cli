@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, useInput, useApp } from 'ink';
+import { Box, useInput, useApp, useStdout } from 'ink';
 import { BottomBar } from './BottomBar.js';
 import { MessageList, type MessageItem } from './MessageList.js';
 import { Composer } from './Composer.js';
@@ -10,6 +10,29 @@ import { ConversationContext } from '../core/context.js';
 import { routePrompt } from '../core/router.js';
 import { getAvailableProviders } from '../config/auth.js';
 import { DEFAULT_CONFIG, type Provider } from '../config/defaults.js';
+
+/**
+ * Force-clear Ink's live rendering area on terminal resize.
+ * Without this, the Composer/BottomBar ghost-duplicate across the screen.
+ */
+function useResizeClear() {
+  const { stdout } = useStdout();
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const onResize = () => {
+      // Clear from cursor to end of screen to remove ghost renders
+      stdout.write('\x1b[J');
+      // Force React re-render so Ink redraws at new dimensions
+      setTick((t) => t + 1);
+    };
+
+    process.stdout.on('resize', onResize);
+    return () => {
+      process.stdout.off('resize', onResize);
+    };
+  }, [stdout]);
+}
 
 export interface AppProps {
   initialPrompt?: string;
@@ -32,6 +55,7 @@ function nextId(): string {
 
 export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProps) {
   const { exit } = useApp();
+  useResizeClear();
 
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [currentProvider, setCurrentProvider] = useState<Provider>(
