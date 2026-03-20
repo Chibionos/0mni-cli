@@ -465,10 +465,14 @@ export async function runAgent(
   // Per-turn mode (e.g. Gemini, Codex)
   // ------------------------------------------------------------------
 
-  // Kill any prior per-turn process that may still be around
+  // Kill any prior process — including persistent Claude process when switching away
   if (activeProcess && !activeProcess.killed) {
-    activeProcess.kill('SIGTERM');
-    activeProcess = null;
+    killAgent();
+  }
+
+  // Reset session ID when switching providers — can't resume across different CLIs
+  if (activeProvider !== provider) {
+    activeSessionId = null;
   }
 
   let child: ChildProcess;

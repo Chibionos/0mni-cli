@@ -314,6 +314,31 @@ describe('Codex parseEvents', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Provider interface checks
+// ---------------------------------------------------------------------------
+describe('Provider interface', () => {
+  it('claude is persistent', () => {
+    expect(getProvider('claude').persistent).toBe(true);
+    expect(getProvider('claude').spawnPersistent).toBeDefined();
+    expect(getProvider('claude').sendMessage).toBeDefined();
+  });
+
+  it('gemini is per-turn', () => {
+    expect(getProvider('gemini').persistent).toBe(false);
+    expect(getProvider('gemini').spawnTurn).toBeDefined();
+  });
+
+  it('codex is per-turn', () => {
+    expect(getProvider('codex').persistent).toBe(false);
+    expect(getProvider('codex').spawnTurn).toBeDefined();
+  });
+
+  it('throws on unknown provider', () => {
+    expect(() => getProvider('unknown' as 'claude')).toThrow('Unknown provider');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getAvailableProviders
 // ---------------------------------------------------------------------------
 describe('getAvailableProviders', () => {
