@@ -183,9 +183,8 @@ const claudeProvider: CLIProvider = {
 
       const events: StreamEvent[] = [];
       for (const block of contentBlocks) {
-        if (block.type === 'text' && typeof block.text === 'string') {
-          events.push({ type: 'text', content: block.text });
-        }
+        // SKIP text blocks — already streamed via stream_event deltas
+        // (--include-partial-messages sends text twice: as deltas AND in the final assistant message)
         if (block.type === 'tool_use') {
           events.push({
             type: 'tool_call',
