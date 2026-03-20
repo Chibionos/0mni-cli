@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { execSync } from 'child_process';
 
@@ -29,6 +29,7 @@ function getGitBranch(): string | null {
     const branch = execSync('git branch --show-current', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 3000,
     }).trim();
     return branch || null;
   } catch {
@@ -77,7 +78,8 @@ export function BottomBar({
   tokenCount,
   yolo: _yolo,
 }: BottomBarProps) {
-  const branch = getGitBranch();
+  // Cache git branch — only read once on mount, not every render
+  const [branch] = useState(() => getGitBranch());
   const dotColor = PROVIDER_COLORS[provider] ?? 'white';
   const modeText = getModeText(provider, autoRoute, isLoading);
 

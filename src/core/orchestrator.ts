@@ -93,16 +93,19 @@ export function killAgent(): void {
   if (activeProcess && !activeProcess.killed) {
     activeProcess.kill('SIGTERM');
 
-    // Force-kill after a short grace period
+    // Force-kill after a short grace period using captured pid
+    // (activeProcess ref is cleared below, so we must use pid directly)
     const pid = activeProcess.pid;
-    setTimeout(() => {
-      try {
-        if (pid) process.kill(pid, 0); // check alive
-        activeProcess?.kill('SIGKILL');
-      } catch {
-        // already dead — ignore
-      }
-    }, 500);
+    if (pid) {
+      setTimeout(() => {
+        try {
+          process.kill(pid, 0); // check alive — throws if dead
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // already dead — ignore
+        }
+      }, 500);
+    }
   }
 
   activeProcess = null;
@@ -121,20 +124,22 @@ function dispatch(event: StreamEvent, callbacks: OrchestratorCallbacks): void {
       if (event.sessionId) {
         activeSessionId = event.sessionId;
       }
-      if (event.model && event.sessionId) {
-        callbacks.onInit?.(event.model, event.sessionId);
+      // Call onInit when we have a session — model may be absent (e.g. Codex)
+      if (event.sessionId) {
+        callbacks.onInit?.(event.model ?? '', event.sessionId);
       }
       break;
 
     case 'text':
-      if (event.content) {
+      // event.content can be empty string "" which is valid (falsy but intentional)
+      if (event.content != null && event.content !== '') {
         turnText += event.content;
         callbacks.onText?.(event.content);
       }
       break;
 
     case 'thinking':
-      if (event.content) {
+      if (event.content != null && event.content !== '') {
         callbacks.onThinking?.(event.content);
       }
       break;
@@ -146,15 +151,14 @@ function dispatch(event: StreamEvent, callbacks: OrchestratorCallbacks): void {
       break;
 
     case 'tool_result':
-      if (event.toolName) {
-        callbacks.onToolResult?.(event.toolName, event.toolResult ?? '');
+      // tool_result events may have toolName or just toolId — dispatch either way
+      if (event.toolName || event.toolId) {
+        callbacks.onToolResult?.(event.toolName ?? event.toolId ?? 'unknown', event.toolResult ?? '');
       }
       break;
 
     case 'result':
-      if (event.usage) {
-        callbacks.onFinish?.(event.usage);
-      }
+      callbacks.onFinish?.(event.usage ?? { inputTokens: 0, outputTokens: 0 });
       break;
 
     case 'error':
@@ -249,6 +253,8 @@ function setupPersistentReader(
     stderrRl.on('line', (line: string) => {
       const trimmed = line.trim();
       if (!trimmed) return;
+      // Filter out MCP informational lines
+      if (/^mcp:/i.test(trimmed)) return;
       if (
         /error|exception|fatal|panic|traceback/i.test(trimmed) &&
         !/debug|trace|info|warn/i.test(trimmed)
@@ -277,6 +283,20 @@ function readUntilExit(
   const { context, callbacks } = options;
 
   return new Promise<string>((resolve, reject) => {
+    let settled = false;
+
+    function safeResolve(value: string) {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    }
+
+    function safeReject(err: Error) {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    }
+
     // ---- stdout: line-by-line JSON event parsing ----
     if (child.stdout) {
       const rl = createInterface({ input: child.stdout });
@@ -305,6 +325,8 @@ function readUntilExit(
       stderrRl.on('line', (line: string) => {
         const trimmed = line.trim();
         if (!trimmed) return;
+        // Filter out Codex MCP lines and other informational noise
+        if (/^mcp:/i.test(trimmed)) return;
         if (
           /error|exception|fatal|panic|traceback/i.test(trimmed) &&
           !/debug|trace|info|warn/i.test(trimmed)
@@ -320,7 +342,7 @@ function readUntilExit(
     child.on('error', (err: Error) => {
       activeProcess = null;
       callbacks.onError?.(err);
-      reject(err);
+      safeReject(err);
     });
 
     child.on('close', (code: number | null, signal: string | null) => {
@@ -328,24 +350,26 @@ function readUntilExit(
 
       if (signal === 'SIGTERM' || signal === 'SIGKILL') {
         callbacks.onError?.(new Error('Agent was stopped.'));
-        resolve(turnText);
+        safeResolve(turnText);
         return;
       }
 
       if (code !== null && code !== 0) {
         const err = new Error(`${provider.name} exited with code ${code}`);
         callbacks.onError?.(err);
-        reject(err);
+        safeReject(err);
         return;
       }
 
       // Successful exit — persist the response in context
-      context.addAssistantMessage(
-        turnText,
-        options.provider,
-        options.model ?? options.provider,
-      );
-      resolve(turnText);
+      if (turnText) {
+        context.addAssistantMessage(
+          turnText,
+          options.provider,
+          options.model ?? options.provider,
+        );
+      }
+      safeResolve(turnText);
     });
   });
 }
@@ -404,7 +428,14 @@ export async function runAgent(
 
     // Spawn persistent process if needed
     if (!activeProcess || activeProcess.killed) {
-      const child = cliProvider.spawnPersistent!(spawnOpts);
+      let child: ChildProcess;
+      try {
+        child = cliProvider.spawnPersistent!(spawnOpts);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        callbacks.onError?.(error);
+        throw error;
+      }
       activeProcess = child;
       activeProvider = provider;
       activeSessionId = null;
@@ -415,7 +446,9 @@ export async function runAgent(
     // Send the message and wait for the result event
     return new Promise<string>((resolve, reject) => {
       resultResolve = (text: string) => {
-        context.addAssistantMessage(text, provider, options.model ?? provider);
+        if (text) {
+          context.addAssistantMessage(text, provider, options.model ?? provider);
+        }
         resolve(text);
       };
       resultReject = reject;
@@ -438,10 +471,17 @@ export async function runAgent(
     activeProcess = null;
   }
 
-  const child = cliProvider.spawnTurn!(prompt, {
-    ...spawnOpts,
-    sessionId: activeSessionId ?? undefined,
-  });
+  let child: ChildProcess;
+  try {
+    child = cliProvider.spawnTurn!(prompt, {
+      ...spawnOpts,
+      sessionId: activeSessionId ?? undefined,
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    callbacks.onError?.(error);
+    throw error;
+  }
 
   activeProcess = child;
   activeProvider = provider;

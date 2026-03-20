@@ -14,7 +14,13 @@ export function Markdown({ text }: MarkdownProps) {
     return null;
   }
 
-  const rendered = marked.parse(text) as string;
+  let rendered: string;
+  try {
+    rendered = marked.parse(text) as string;
+  } catch {
+    // If markdown parsing fails, render raw text
+    return <Text>{text}</Text>;
+  }
   // Strip trailing newlines that marked adds
   const trimmed = rendered.replace(/\n+$/, '');
 

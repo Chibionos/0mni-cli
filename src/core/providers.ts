@@ -108,7 +108,7 @@ const claudeProvider: CLIProvider = {
   },
 
   sendMessage(proc: ChildProcess, message: string, sessionId: string): void {
-    if (!proc.stdin || proc.stdin.destroyed) return;
+    if (!proc.stdin || proc.stdin.destroyed || !proc.stdin.writable) return;
 
     const payload = JSON.stringify({
       type: 'user',
@@ -117,7 +117,11 @@ const claudeProvider: CLIProvider = {
       parent_tool_use_id: null,
     });
 
-    proc.stdin.write(payload + '\n');
+    try {
+      proc.stdin.write(payload + '\n');
+    } catch {
+      // stdin pipe may be broken if the process died between our check and write
+    }
   },
 
   parseEvents(line: string): StreamEvent[] {
@@ -128,6 +132,24 @@ const claudeProvider: CLIProvider = {
     try {
       data = JSON.parse(trimmed);
     } catch {
+      return [];
+    }
+
+    // Unwrap stream_event wrapper from --include-partial-messages
+    // Format: {"type":"stream_event","event":{"type":"content_block_delta","delta":{...}}}
+    if (data.type === 'stream_event' && data.event && typeof data.event === 'object') {
+      const event = data.event as Record<string, unknown>;
+      // Extract text deltas from content_block_delta events
+      if (event.type === 'content_block_delta') {
+        const delta = event.delta as Record<string, unknown> | undefined;
+        if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+          return [{ type: 'text', content: delta.text }];
+        }
+        if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+          return [{ type: 'thinking', content: delta.thinking }];
+        }
+      }
+      // Ignore other stream_event subtypes (content_block_start, content_block_stop, etc.)
       return [];
     }
 
@@ -225,6 +247,12 @@ const claudeProvider: CLIProvider = {
 //   {"type":"result","status":"success","stats":{...}}
 // ---------------------------------------------------------------------------
 
+/** Strip ANSI escape sequences from a string. */
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+}
+
 const geminiProvider: CLIProvider = {
   name: 'gemini',
   persistent: false,
@@ -258,13 +286,15 @@ const geminiProvider: CLIProvider = {
   },
 
   parseEvents(line: string): StreamEvent[] {
-    const trimmed = line.trim();
+    // Strip ANSI escape codes that Gemini may inject into stream-json output
+    const trimmed = stripAnsi(line).trim();
     if (!trimmed) return [];
 
     let data: Record<string, unknown>;
     try {
       data = JSON.parse(trimmed);
     } catch {
+      // Non-JSON lines from Gemini: "YOLO mode is enabled.", "Loaded cached credentials.", etc.
       return [];
     }
 
@@ -279,7 +309,9 @@ const geminiProvider: CLIProvider = {
 
     // Text deltas — Gemini uses type:"message" with role:"assistant" and delta:true
     if (data.type === 'message' && data.role === 'assistant') {
-      return [{ type: 'text', content: data.content as string }];
+      const content = data.content;
+      if (content == null) return [];
+      return [{ type: 'text', content: String(content) }];
     }
 
     // Tool use — Gemini uses type:"tool_use" with tool_name and parameters
@@ -297,7 +329,7 @@ const geminiProvider: CLIProvider = {
       return [{
         type: 'tool_result',
         toolId: data.tool_id as string,
-        toolResult: data.output as string,
+        toolResult: typeof data.output === 'string' ? data.output : JSON.stringify(data.output ?? ''),
       }];
     }
 
@@ -377,6 +409,7 @@ const codexProvider: CLIProvider = {
     try {
       data = JSON.parse(trimmed);
     } catch {
+      // Non-JSON header lines from Codex: version banner, separator, workdir, model, etc.
       return [];
     }
 
@@ -400,6 +433,8 @@ const codexProvider: CLIProvider = {
           toolArgs: { command: cleanCmd },
         }];
       }
+      // item.started for agent_message — text is empty initially, skip
+      return [];
     }
 
     // Item completed — text, command output, or file change
@@ -407,9 +442,11 @@ const codexProvider: CLIProvider = {
       const item = data.item as Record<string, unknown> | undefined;
       if (!item) return [];
 
-      // Agent text message
+      // Agent text message — skip if text is empty/null (item.started sends empty)
       if (item.type === 'agent_message') {
-        return [{ type: 'text', content: item.text as string }];
+        const text = item.text;
+        if (text == null || text === '') return [];
+        return [{ type: 'text', content: String(text) }];
       }
 
       // Command execution result
@@ -478,7 +515,7 @@ export function getAvailableProviders(): Provider[] {
   const all: Provider[] = ['claude', 'gemini', 'codex'];
   return all.filter((name) => {
     try {
-      execSync(`which ${name}`, { stdio: 'ignore' });
+      execSync(`command -v ${name}`, { stdio: 'ignore' });
       return true;
     } catch {
       return false;

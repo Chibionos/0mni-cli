@@ -19,6 +19,12 @@ const PROVIDER_COLORS: Record<string, string> = {
   system: 'gray',
 };
 
+// Tools that ask the user a question — show the question prominently
+const QUESTION_TOOLS = ['AskUserQuestion', 'ask_user', 'askUser'];
+
+// Internal/meta tools the user doesn't need to see
+const HIDDEN_TOOLS = ['ToolSearch', 'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet'];
+
 function StreamingCursor() {
   const [visible, setVisible] = useState(true);
   useEffect(() => {
@@ -30,16 +36,35 @@ function StreamingCursor() {
 
 function formatToolDetail(name: string, args?: Record<string, unknown>): string {
   if (!args || Object.keys(args).length === 0) return '';
-  const path = args.path ?? args.file_path ?? args.file ?? args.filename;
+
+  // Question tools — extract the question
+  const question = args.question ?? args.prompt ?? args.text;
+  if (question) return String(question);
+
+  // File tools
+  const path = args.path ?? args.file_path ?? args.file ?? args.filename ?? args.file_name;
   if (path) return String(path);
-  const command = args.command ?? args.cmd;
-  if (command) return String(command).slice(0, 80);
-  const pattern = args.pattern ?? args.query ?? args.glob;
+
+  // Shell/command tools
+  const command = args.command ?? args.cmd ?? args.description;
+  if (command) return String(command).slice(0, 100);
+
+  // Search tools
+  const pattern = args.pattern ?? args.query ?? args.glob ?? args.search ?? args.regex;
   if (pattern) return String(pattern);
-  const url = args.url;
+
+  // URL tools
+  const url = args.url ?? args.href;
   if (url) return String(url);
-  const firstVal = Object.values(args)[0];
-  if (firstVal && typeof firstVal === 'string') return firstVal.slice(0, 60);
+
+  // Skill/agent tools
+  const skill = args.skill ?? args.agent ?? args.name;
+  if (skill) return String(skill);
+
+  // Fallback: show first string arg value
+  for (const val of Object.values(args)) {
+    if (typeof val === 'string' && val.length > 0) return val.slice(0, 80);
+  }
   return '';
 }
 
@@ -63,14 +88,38 @@ export function Message({ role, content, provider, toolName, toolArgs, isStreami
     );
   }
 
-  // Tool messages — show tool name + useful arg info
+  // Tool messages
   if (role === 'tool') {
+    const name = toolName ?? 'tool';
     const color = PROVIDER_COLORS[provider ?? ''] ?? '#999999';
-    const detail = formatToolDetail(toolName ?? '', toolArgs);
+
+    // Hide internal/meta tools — don't clutter the UI
+    if (HIDDEN_TOOLS.includes(name)) {
+      return null;
+    }
+
+    // Question tools — show prominently so the user can answer
+    if (QUESTION_TOOLS.includes(name)) {
+      const question = (toolArgs?.question ?? toolArgs?.prompt ?? toolArgs?.text ?? content) as string;
+      return (
+        <Box flexDirection="column" marginY={0} paddingLeft={2}>
+          <Box gap={1}>
+            <Text color="yellow" bold>{'\u2753'}</Text>
+            <Text bold color="yellow">Question from {provider ?? 'agent'}:</Text>
+          </Box>
+          <Box paddingLeft={2}>
+            <Text>{question}</Text>
+          </Box>
+        </Box>
+      );
+    }
+
+    // Regular tool calls
+    const detail = formatToolDetail(name, toolArgs);
     return (
       <Box marginY={0} paddingLeft={2}>
         <Text color={color}>{'\u25B8 '}</Text>
-        <Text bold color={color}>{toolName ?? 'tool'}</Text>
+        <Text bold color={color}>{name}</Text>
         {detail ? <Text dimColor> {detail}</Text> : null}
       </Box>
     );

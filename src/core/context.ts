@@ -104,7 +104,7 @@ export class ConversationContext {
 
   getTokenEstimate(): number {
     return Math.ceil(
-      this.messages.reduce((sum, m) => sum + m.content.length, 0) / 4,
+      this.messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0) / 4,
     );
   }
 }

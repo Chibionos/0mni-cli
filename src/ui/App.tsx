@@ -134,10 +134,13 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
 
       if (isAutoRoute) {
         const route = routePrompt(prompt);
-        activeProvider = route.provider;
-        activeModel = DEFAULT_CONFIG.models[route.provider];
-        setCurrentProvider(activeProvider);
-        setCurrentModel(activeModel);
+        // Only route to the provider if it's actually installed
+        if (availableProviders.includes(route.provider)) {
+          activeProvider = route.provider;
+          activeModel = DEFAULT_CONFIG.models[route.provider];
+          setCurrentProvider(activeProvider);
+          setCurrentModel(activeModel);
+        }
       }
 
       addMessage({ role: 'user', content: prompt });
@@ -152,7 +155,9 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
 
       const callbacks: OrchestratorCallbacks = {
         onInit: (modelName) => {
-          setCurrentModel(modelName);
+          if (modelName) {
+            setCurrentModel(modelName);
+          }
         },
         onText: (text) => {
           updateMessage(assistantId, (m) => ({
@@ -220,6 +225,13 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
           yolo: isYolo,
           callbacks,
         });
+        // If runAgent resolved but onFinish never fired (no result event),
+        // ensure we still clean up the streaming state.
+        if (streamingIdRef.current === assistantId) {
+          updateMessage(assistantId, (m) => ({ ...m, isStreaming: false }));
+          streamingIdRef.current = null;
+          setIsLoading(false);
+        }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         updateMessage(assistantId, (m) => ({
@@ -231,7 +243,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         setIsLoading(false);
       }
     },
-    [currentProvider, currentModel, isAutoRoute, isYolo, addMessage, updateMessage],
+    [currentProvider, currentModel, isAutoRoute, isYolo, availableProviders, addMessage, updateMessage],
   );
 
   // ---- slash commands ----
@@ -319,23 +331,26 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
           return false;
       }
     },
-    [currentProvider, currentModel, isAutoRoute, usage, addMessage],
+    [currentProvider, currentModel, isAutoRoute, addMessage],
   );
 
   // ---- submit handler (supports queuing while loading) ----
 
   const handleSubmit = useCallback(
     (text: string) => {
-      if (text.startsWith('/')) {
-        if (handleSlashCommand(text)) return;
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      if (trimmed.startsWith('/')) {
+        if (handleSlashCommand(trimmed)) return;
       }
       if (isLoading) {
         // Queue the message — will be sent after current agent finishes
-        messageQueueRef.current.push(text);
-        addMessage({ role: 'assistant', content: `Queued: "${text}" — will run after current task.`, provider: 'system' });
+        messageQueueRef.current.push(trimmed);
+        addMessage({ role: 'assistant', content: `Queued: "${trimmed}" — will run after current task.`, provider: 'system' });
         return;
       }
-      sendToAgent(text);
+      sendToAgent(trimmed);
     },
     [handleSlashCommand, sendToAgent, isLoading, addMessage],
   );
