@@ -13,9 +13,9 @@ export interface BottomBarProps {
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
-  claude: 'blue',
-  gemini: 'green',
-  codex: 'yellow',
+  claude: '#FF6600',
+  gemini: 'magenta',
+  codex: '#4A90D9',
 };
 
 function getGitBranch(): string | null {
@@ -34,8 +34,8 @@ function formatTokens(count: number): string {
   return count.toLocaleString();
 }
 
-function getModeText(provider: string, autoRoute: boolean): string {
-  if (autoRoute) return 'auto-routing on';
+function getModeText(provider: string, autoRoute: boolean, isLoading: boolean): string {
+  if (autoRoute) return isLoading ? 'auto-routing' : 'auto mode';
   return `${provider} mode`;
 }
 
@@ -43,14 +43,14 @@ export function BottomBar({
   provider,
   model: _model,
   autoRoute,
-  isLoading: _isLoading,
+  isLoading,
   tokenCount,
   costUsd,
   yolo: _yolo,
 }: BottomBarProps) {
   const branch = getGitBranch();
   const dotColor = PROVIDER_COLORS[provider] ?? 'white';
-  const modeText = getModeText(provider, autoRoute);
+  const modeText = getModeText(provider, autoRoute, isLoading);
 
   return (
     <Box
@@ -76,7 +76,7 @@ export function BottomBar({
             </Text>
           )}
           <Text color={dotColor}>{'\u25CF'}</Text>
-          <Text dimColor>{provider}</Text>
+          <Text color={dotColor} bold>{provider}</Text>
         </Box>
         <Box gap={2}>
           <Text dimColor>{formatTokens(tokenCount)} tokens</Text>
@@ -89,9 +89,9 @@ export function BottomBar({
       {/* Line 2 */}
       <Box flexDirection="row" justifyContent="space-between">
         <Box gap={1}>
-          <Text color="yellow">{'\u25B8\u25B8'}</Text>
+          <Text color={dotColor}>{'\u25B8\u25B8'}</Text>
           <Text>{modeText}</Text>
-          <Text dimColor>(/claude /gemini /codex to switch)</Text>
+          <Text dimColor>{isLoading ? '(x to stop)' : '(/claude /gemini /codex)'}</Text>
         </Box>
         <Text dimColor>omni v0.1.0</Text>
       </Box>

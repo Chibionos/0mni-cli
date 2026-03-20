@@ -54,6 +54,8 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
 
   const contextRef = useRef(new ConversationContext());
   const streamingIdRef = useRef<string | null>(null);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- helpers ----
 
@@ -82,19 +84,43 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
     setIsLoading(false);
   }, [updateMessage]);
 
-  // ---- Ctrl+C / Escape: kill agent or exit ----
+  // ---- Ctrl+C: first press confirms, second press exits ----
 
   useInput((_input, key) => {
-    if (key.ctrl && _input === 'c') {
-      if (isLoading) {
-        stopAgent();
-      } else {
-        exit();
-      }
+    // X key stops the running agent
+    if (_input === 'x' && isLoading) {
+      stopAgent();
+      return;
     }
 
     if (key.escape && isLoading) {
       stopAgent();
+      return;
+    }
+
+    if (key.ctrl && _input === 'c') {
+      if (isLoading) {
+        stopAgent();
+        return;
+      }
+
+      if (confirmExit) {
+        if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+        exit();
+        return;
+      }
+
+      setConfirmExit(true);
+      addMessage({
+        role: 'assistant',
+        content: 'Press Ctrl+C again to exit.',
+        provider: 'system',
+      });
+
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = setTimeout(() => {
+        setConfirmExit(false);
+      }, 3000);
     }
   });
 
@@ -111,6 +137,8 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         const route = routePrompt(prompt);
         activeProvider = route.provider;
         activeModel = DEFAULT_CONFIG.models[route.provider];
+        setCurrentProvider(activeProvider);
+        setCurrentModel(activeModel);
       }
 
       addMessage({ role: 'user', content: prompt });
@@ -133,19 +161,18 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
             content: m.content + text,
           }));
         },
-        onToolCall: (name) => {
+        onToolCall: (name, args) => {
           addMessage({
             role: 'tool',
-            content: `Calling ${name}...`,
+            content: '',
             toolName: name,
+            toolArgs: args,
+            provider: activeProvider,
           });
         },
-        onToolResult: (name, result) => {
-          addMessage({
-            role: 'tool',
-            content: result,
-            toolName: name,
-          });
+        onToolResult: (_name, _result) => {
+          // Tool results are handled by the CLI internally
+          // We don't add separate result messages to keep the UI clean
         },
         onThinking: () => {
           updateMessage(assistantId, (m) => ({
@@ -295,8 +322,8 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
               '  /help      - Show this help',
               '',
               'Keyboard:',
-              '  Ctrl+C     - Stop running agent / Exit',
-              '  Escape     - Stop running agent',
+              '  x / Esc    - Stop running agent',
+              '  Ctrl+C     - Stop agent / Exit (press twice)',
               '  Enter      - Submit prompt',
             ].join('\n'),
             provider: 'system',
@@ -350,6 +377,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
       <Composer
         onSubmit={handleSubmit}
         isLoading={isLoading}
+        activeProvider={currentProvider}
         placeholder={
           isAutoRoute
             ? 'Ask anything (auto-routing)...'

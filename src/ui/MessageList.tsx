@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box } from 'ink';
+import { Static, Box } from 'ink';
 import { Message } from './Message.js';
 
 export interface MessageItem {
@@ -8,6 +8,7 @@ export interface MessageItem {
   content: string;
   provider?: string;
   toolName?: string;
+  toolArgs?: Record<string, unknown>;
   isStreaming?: boolean;
 }
 
@@ -16,25 +17,41 @@ export interface MessageListProps {
 }
 
 export function MessageList({ messages }: MessageListProps) {
+  // Split: completed messages use <Static> (scroll up, not re-rendered)
+  // The last streaming message renders live below
+  const lastMsg = messages[messages.length - 1];
+  const isLastStreaming = lastMsg?.isStreaming;
+
+  const staticMessages = isLastStreaming ? messages.slice(0, -1) : messages;
+  const liveMessage = isLastStreaming ? lastMsg : null;
+
   return (
     <Box flexDirection="column" paddingX={2}>
-      {messages.map((msg, idx) => {
-        // Add a blank spacer line before user messages (except the very first message)
-        const needsSpacer = msg.role === 'user' && idx > 0;
-
-        return (
+      <Static items={staticMessages}>
+        {(msg) => (
           <Box key={msg.id} flexDirection="column">
-            {needsSpacer && <Box marginBottom={1} />}
+            {msg.role === 'user' && <Box marginTop={1} />}
             <Message
               role={msg.role}
               content={msg.content}
               provider={msg.provider}
               toolName={msg.toolName}
-              isStreaming={msg.isStreaming}
+              toolArgs={msg.toolArgs}
+              isStreaming={false}
             />
           </Box>
-        );
-      })}
+        )}
+      </Static>
+      {liveMessage && (
+        <Message
+          role={liveMessage.role}
+          content={liveMessage.content}
+          provider={liveMessage.provider}
+          toolName={liveMessage.toolName}
+          toolArgs={liveMessage.toolArgs}
+          isStreaming={true}
+        />
+      )}
     </Box>
   );
 }

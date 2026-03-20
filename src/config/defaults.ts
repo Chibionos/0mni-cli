@@ -1,6 +1,6 @@
 export const DEFAULT_CONFIG = {
   defaultProvider: 'claude' as const,
-  autoRoute: false,
+  autoRoute: true,
   yolo: false,
   models: {
     claude: 'sonnet',

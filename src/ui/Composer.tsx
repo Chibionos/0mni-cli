@@ -4,9 +4,9 @@ import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 
 const PROVIDER_COLORS: Record<string, string> = {
-  claude: 'blue',
-  gemini: 'green',
-  codex: 'yellow',
+  claude: '#FF6600',
+  gemini: 'magenta',
+  codex: '#4A90D9',
 };
 
 export interface ComposerProps {
