@@ -1,52 +1,101 @@
-import type { CoreMessage } from 'ai';
-
 export interface Message {
-  role: 'user' | 'assistant' | 'tool';
+  id: string;
+  role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   provider?: string;
   model?: string;
-  timestamp: number;
   toolName?: string;
-  toolCallId?: string;
+  timestamp: number;
+  isStreaming?: boolean;
 }
 
-export class ConversationContext {
-  messages: Message[] = [];
+let idCounter = 0;
 
-  addUserMessage(content: string): void {
-    this.messages.push({
+export class ConversationContext {
+  private messages: Message[] = [];
+
+  private generateId(): string {
+    return `ctx-${++idCounter}-${Date.now()}`;
+  }
+
+  addUserMessage(content: string): Message {
+    const msg: Message = {
+      id: this.generateId(),
       role: 'user',
       content,
       timestamp: Date.now(),
-    });
+    };
+    this.messages.push(msg);
+    return msg;
   }
 
   addAssistantMessage(
     content: string,
-    provider: string,
-    model: string,
-  ): void {
-    this.messages.push({
+    provider?: string,
+    model?: string,
+  ): Message {
+    const msg: Message = {
+      id: this.generateId(),
       role: 'assistant',
       content,
       provider,
       model,
       timestamp: Date.now(),
-    });
+    };
+    this.messages.push(msg);
+    return msg;
   }
 
-  addToolResult(toolName: string, result: string, callId: string): void {
-    this.messages.push({
+  addToolMessage(toolName: string, content: string): Message {
+    const msg: Message = {
+      id: this.generateId(),
       role: 'tool',
-      content: result,
+      content,
       toolName,
-      toolCallId: callId,
       timestamp: Date.now(),
-    });
+    };
+    this.messages.push(msg);
+    return msg;
+  }
+
+  addSystemMessage(content: string): Message {
+    const msg: Message = {
+      id: this.generateId(),
+      role: 'system',
+      content,
+      timestamp: Date.now(),
+    };
+    this.messages.push(msg);
+    return msg;
+  }
+
+  add(msg: Omit<Message, 'id' | 'timestamp'>): Message {
+    const full: Message = {
+      ...msg,
+      id: this.generateId(),
+      timestamp: Date.now(),
+    };
+    this.messages.push(full);
+    return full;
   }
 
   getMessages(): Message[] {
     return [...this.messages];
+  }
+
+  getLastMessage(): Message | undefined {
+    return this.messages[this.messages.length - 1];
+  }
+
+  getMessageById(id: string): Message | undefined {
+    return this.messages.find((m) => m.id === id);
+  }
+
+  updateMessage(id: string, updates: Partial<Message>): void {
+    const idx = this.messages.findIndex((m) => m.id === id);
+    if (idx !== -1) {
+      this.messages[idx] = { ...this.messages[idx], ...updates };
+    }
   }
 
   clear(): void {
@@ -57,24 +106,5 @@ export class ConversationContext {
     return Math.ceil(
       this.messages.reduce((sum, m) => sum + m.content.length, 0) / 4,
     );
-  }
-
-  toAIMessages(): CoreMessage[] {
-    return this.messages.map((m): CoreMessage => {
-      if (m.role === 'tool') {
-        return {
-          role: 'tool',
-          content: [
-            {
-              type: 'tool-result',
-              toolCallId: m.toolCallId ?? '',
-              toolName: m.toolName ?? '',
-              result: m.content,
-            },
-          ],
-        };
-      }
-      return { role: m.role, content: m.content };
-    });
   }
 }

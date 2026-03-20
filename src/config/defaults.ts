@@ -3,13 +3,13 @@ export const DEFAULT_CONFIG = {
   autoRoute: false,
   yolo: false,
   models: {
-    claude: 'claude-sonnet-4-6',
+    claude: 'sonnet',
     gemini: 'gemini-2.5-flash',
-    openai: 'gpt-4.1',
+    codex: 'o3-mini',
   },
   maxSteps: 25,
   skillsDirs: ['.0mni/skills', '~/.config/0mni/skills'],
 };
 
-export type Provider = 'claude' | 'gemini' | 'openai';
+export type Provider = 'claude' | 'gemini' | 'codex';
 export type Config = typeof DEFAULT_CONFIG;

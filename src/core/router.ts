@@ -66,7 +66,7 @@ const TASK_PROVIDER_MAP: Record<TaskType, Provider> = {
   search: 'gemini',
   multimodal: 'gemini',
   simple_qa: 'gemini',
-  refactor: 'openai',
+  refactor: 'codex',
 };
 
 export function classifyTask(prompt: string): TaskType {

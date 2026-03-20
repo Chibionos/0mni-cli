@@ -11,10 +11,11 @@ export interface MessageProps {
   isStreaming?: boolean;
 }
 
-const PROVIDER_ICONS: Record<string, string> = {
-  claude: '\u2726',   // sparkle
-  gemini: '\u25C6',   // diamond
-  openai: '\u25CF',   // circle
+const PROVIDER_STYLE: Record<string, { icon: string; color: string }> = {
+  claude: { icon: '\u25CF', color: 'blue' },      // blue dot
+  gemini: { icon: '\u25CF', color: 'green' },     // green dot
+  codex:  { icon: '\u25CF', color: 'yellow' },    // yellow dot
+  system: { icon: '\u25B8', color: 'gray' },      // gray arrow
 };
 
 export function Message({ role, content, provider, toolName, isStreaming }: MessageProps) {
@@ -32,7 +33,10 @@ export function Message({ role, content, provider, toolName, isStreaming }: Mess
   if (role === 'tool') {
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Text color="yellow">[tool] {toolName ?? 'unknown'}</Text>
+        <Box gap={1}>
+          <Text color="yellow">{'\u2192'}</Text>
+          <Text color="yellow" bold>{toolName ?? 'tool'}</Text>
+        </Box>
         <Box marginLeft={2}>
           <Text dimColor>{content.length > 500 ? content.slice(0, 500) + '...' : content}</Text>
         </Box>
@@ -41,14 +45,17 @@ export function Message({ role, content, provider, toolName, isStreaming }: Mess
   }
 
   // assistant
-  const icon = provider ? (PROVIDER_ICONS[provider] ?? '\u25B8') : '\u25B8';
-  const displayName = provider ?? 'assistant';
+  const style = provider ? (PROVIDER_STYLE[provider] ?? { icon: '\u25B8', color: 'cyan' }) : { icon: '\u25B8', color: 'cyan' };
+  const displayName = provider === 'system' ? 'system' : (provider ?? 'assistant');
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text bold color="cyan">
-        {icon} {displayName}:
-      </Text>
+      <Box gap={1}>
+        <Text color={style.color}>{style.icon}</Text>
+        <Text bold color={style.color}>
+          {displayName}:
+        </Text>
+      </Box>
       <Box marginLeft={2} flexDirection="column">
         <Markdown text={content} />
         {isStreaming && (

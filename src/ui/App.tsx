@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box } from 'ink';
+import { Box, useInput, useApp } from 'ink';
 import { StatusBar } from './StatusBar.js';
 import { MessageList, type MessageItem } from './MessageList.js';
 import { Composer } from './Composer.js';
-import { ToolConfirmation } from './ToolConfirmation.js';
 import { WelcomeScreen } from './WelcomeScreen.js';
-import { runAgent } from '../core/orchestrator.js';
-import { getAllTools, DANGEROUS_TOOLS } from '../tools/registry.js';
+import { runAgent, killAgent, type OrchestratorCallbacks } from '../core/orchestrator.js';
 import { PROVIDER_MODELS } from '../core/providers.js';
 import { ConversationContext } from '../core/context.js';
 import { routePrompt } from '../core/router.js';
@@ -21,10 +19,10 @@ export interface AppProps {
   yolo?: boolean;
 }
 
-interface PendingConfirmation {
-  toolName: string;
-  args: Record<string, unknown>;
-  resolve: (allowed: boolean) => void;
+interface UsageStats {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostUsd: number;
 }
 
 let msgIdCounter = 0;
@@ -33,6 +31,8 @@ function nextId(): string {
 }
 
 export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProps) {
+  const { exit } = useApp();
+
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [currentProvider, setCurrentProvider] = useState<Provider>(
     (provider as Provider) ?? DEFAULT_CONFIG.defaultProvider,
@@ -42,14 +42,19 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isAutoRoute, setIsAutoRoute] = useState(autoRoute ?? DEFAULT_CONFIG.autoRoute);
-  // yolo mode: auto-approve all tool calls without confirmation
   const isYolo = yolo ?? DEFAULT_CONFIG.yolo;
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [cwd] = useState(process.cwd());
   const [availableProviders] = useState(() => getAvailableProviders());
+  const [usage, setUsage] = useState<UsageStats>({
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCostUsd: 0,
+  });
 
   const contextRef = useRef(new ConversationContext());
   const streamingIdRef = useRef<string | null>(null);
+
+  // ---- helpers ----
 
   const addMessage = useCallback((msg: Omit<MessageItem, 'id'>): string => {
     const id = nextId();
@@ -61,11 +66,33 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
     setMessages((prev) => prev.map((m) => (m.id === id ? updater(m) : m)));
   }, []);
 
+  // ---- Ctrl+C: kill agent or exit ----
+
+  useInput((_input, key) => {
+    if (key.ctrl && _input === 'c') {
+      if (isLoading) {
+        killAgent();
+        if (streamingIdRef.current) {
+          updateMessage(streamingIdRef.current, (m) => ({
+            ...m,
+            content: m.content + '\n\n[Stopped]',
+            isStreaming: false,
+          }));
+          streamingIdRef.current = null;
+        }
+        setIsLoading(false);
+      } else {
+        exit();
+      }
+    }
+  });
+
+  // ---- send prompt to CLI agent subprocess ----
+
   const sendToAgent = useCallback(
     async (prompt: string) => {
       setIsLoading(true);
 
-      // Determine provider
       let activeProvider = currentProvider;
       let activeModel = currentModel;
 
@@ -75,10 +102,8 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         activeModel = DEFAULT_CONFIG.models[route.provider];
       }
 
-      // Add user message to display
       addMessage({ role: 'user', content: prompt });
 
-      // Create streaming assistant message
       const assistantId = addMessage({
         role: 'assistant',
         content: '',
@@ -87,52 +112,69 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
       });
       streamingIdRef.current = assistantId;
 
-      const tools = getAllTools();
+      const callbacks: OrchestratorCallbacks = {
+        onInit: (modelName) => {
+          setCurrentModel(modelName);
+        },
+        onText: (text) => {
+          updateMessage(assistantId, (m) => ({
+            ...m,
+            content: m.content + text,
+          }));
+        },
+        onToolCall: (name) => {
+          addMessage({
+            role: 'tool',
+            content: `Calling ${name}...`,
+            toolName: name,
+          });
+        },
+        onToolResult: (name, result) => {
+          addMessage({
+            role: 'tool',
+            content: result,
+            toolName: name,
+          });
+        },
+        onThinking: () => {
+          updateMessage(assistantId, (m) => ({
+            ...m,
+            isStreaming: true,
+          }));
+        },
+        onFinish: (u) => {
+          updateMessage(assistantId, (m) => ({
+            ...m,
+            isStreaming: false,
+          }));
+          streamingIdRef.current = null;
+          setIsLoading(false);
+          if (u) {
+            setUsage((prev) => ({
+              totalInputTokens: prev.totalInputTokens + (u.inputTokens ?? 0),
+              totalOutputTokens: prev.totalOutputTokens + (u.outputTokens ?? 0),
+              totalCostUsd: prev.totalCostUsd + (u.costUsd ?? 0),
+            }));
+          }
+        },
+        onError: (error) => {
+          updateMessage(assistantId, (m) => ({
+            ...m,
+            content: m.content || `Error: ${error.message}`,
+            isStreaming: false,
+          }));
+          streamingIdRef.current = null;
+          setIsLoading(false);
+        },
+      };
 
       try {
         await runAgent(prompt, {
           provider: activeProvider,
           model: activeModel,
-          tools,
           context: contextRef.current,
-          onText: (text) => {
-            updateMessage(assistantId, (m) => ({
-              ...m,
-              content: m.content + text,
-            }));
-          },
-          onToolCall: (name) => {
-            const isDangerous = DANGEROUS_TOOLS.includes(name as typeof DANGEROUS_TOOLS[number]);
-            addMessage({
-              role: 'tool',
-              content: isDangerous && !isYolo ? `Calling ${name} (requires approval)...` : `Calling ${name}...`,
-              toolName: name,
-            });
-          },
-          onToolResult: (name, result) => {
-            addMessage({
-              role: 'tool',
-              content: result,
-              toolName: name,
-            });
-          },
-          onFinish: () => {
-            updateMessage(assistantId, (m) => ({
-              ...m,
-              isStreaming: false,
-            }));
-            streamingIdRef.current = null;
-            setIsLoading(false);
-          },
-          onError: (error) => {
-            updateMessage(assistantId, (m) => ({
-              ...m,
-              content: m.content || `Error: ${error.message}`,
-              isStreaming: false,
-            }));
-            streamingIdRef.current = null;
-            setIsLoading(false);
-          },
+          yolo: isYolo,
+          callbacks,
         });
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -145,8 +187,10 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         setIsLoading(false);
       }
     },
-    [currentProvider, currentModel, isAutoRoute, addMessage, updateMessage],
+    [currentProvider, currentModel, isAutoRoute, isYolo, addMessage, updateMessage],
   );
+
+  // ---- slash commands ----
 
   const handleSlashCommand = useCallback(
     (text: string): boolean => {
@@ -157,20 +201,19 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         case '/claude':
           setCurrentProvider('claude');
           setCurrentModel(DEFAULT_CONFIG.models.claude);
-          addMessage({ role: 'assistant', content: 'Switched to Claude.', provider: 'system' });
+          addMessage({ role: 'assistant', content: 'Switched to Claude CLI.', provider: 'system' });
           return true;
 
         case '/gemini':
           setCurrentProvider('gemini');
           setCurrentModel(DEFAULT_CONFIG.models.gemini);
-          addMessage({ role: 'assistant', content: 'Switched to Gemini.', provider: 'system' });
+          addMessage({ role: 'assistant', content: 'Switched to Gemini CLI.', provider: 'system' });
           return true;
 
         case '/codex':
-        case '/openai':
-          setCurrentProvider('openai');
-          setCurrentModel(DEFAULT_CONFIG.models.openai);
-          addMessage({ role: 'assistant', content: 'Switched to OpenAI.', provider: 'system' });
+          setCurrentProvider('codex');
+          setCurrentModel(DEFAULT_CONFIG.models.codex);
+          addMessage({ role: 'assistant', content: 'Switched to Codex CLI.', provider: 'system' });
           return true;
 
         case '/auto':
@@ -185,7 +228,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         case '/model': {
           const modelArg = parts[1];
           if (!modelArg) {
-            const allModels = PROVIDER_MODELS[currentProvider];
+            const allModels = PROVIDER_MODELS[currentProvider] ?? [];
             addMessage({
               role: 'assistant',
               content: `Current: ${currentModel}\nAvailable for ${currentProvider}: ${allModels.join(', ')}`,
@@ -195,7 +238,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
             setCurrentModel(modelArg);
             addMessage({
               role: 'assistant',
-              content: `Model set to ${modelArg}.`,
+              content: `Model set to ${modelArg}. Will be passed to ${currentProvider} CLI via -m flag.`,
               provider: 'system',
             });
           }
@@ -205,21 +248,44 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         case '/clear':
           setMessages([]);
           contextRef.current.clear();
+          setUsage({ totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0 });
           addMessage({ role: 'assistant', content: 'Conversation cleared.', provider: 'system' });
           return true;
+
+        case '/cost': {
+          const costDisplay = usage.totalCostUsd > 0
+            ? `$${usage.totalCostUsd.toFixed(4)}`
+            : 'N/A';
+          addMessage({
+            role: 'assistant',
+            content: [
+              'Session Usage:',
+              `  Input tokens:  ${usage.totalInputTokens.toLocaleString()}`,
+              `  Output tokens: ${usage.totalOutputTokens.toLocaleString()}`,
+              `  Estimated cost: ${costDisplay}`,
+            ].join('\n'),
+            provider: 'system',
+          });
+          return true;
+        }
 
         case '/help':
           addMessage({
             role: 'assistant',
             content: [
               'Available commands:',
-              '  /claude    - Switch to Claude',
-              '  /gemini    - Switch to Gemini',
-              '  /openai    - Switch to OpenAI',
+              '  /claude    - Switch to Claude CLI',
+              '  /gemini    - Switch to Gemini CLI',
+              '  /codex     - Switch to Codex CLI',
               '  /auto      - Toggle auto-routing',
               '  /model [n] - Show or set model',
+              '  /cost      - Show accumulated tokens/cost',
               '  /clear     - Clear conversation',
               '  /help      - Show this help',
+              '',
+              'Keyboard:',
+              '  Ctrl+C     - Stop running agent / Exit',
+              '  Enter      - Submit prompt',
             ].join('\n'),
             provider: 'system',
           });
@@ -229,8 +295,10 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
           return false;
       }
     },
-    [currentProvider, currentModel, isAutoRoute, addMessage],
+    [currentProvider, currentModel, isAutoRoute, usage, addMessage],
   );
+
+  // ---- submit handler ----
 
   const handleSubmit = useCallback(
     (text: string) => {
@@ -242,19 +310,12 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
     [handleSlashCommand, sendToAgent],
   );
 
-  const handleConfirm = useCallback(() => {
-    if (pendingConfirmation) {
-      pendingConfirmation.resolve(true);
-      setPendingConfirmation(null);
-    }
-  }, [pendingConfirmation]);
-
-  const handleDeny = useCallback(() => {
-    if (pendingConfirmation) {
-      pendingConfirmation.resolve(false);
-      setPendingConfirmation(null);
-    }
-  }, [pendingConfirmation]);
+  // Kill the active CLI subprocess on unmount
+  useEffect(() => {
+    return () => {
+      killAgent();
+    };
+  }, []);
 
   // Handle initial prompt
   useEffect(() => {
@@ -263,7 +324,7 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
     }
   }, []);
 
-  // Show welcome screen if no providers are configured
+  // Show welcome screen if no CLI providers are installed
   if (availableProviders.length === 0) {
     return <WelcomeScreen availableProviders={availableProviders} />;
   }
@@ -277,18 +338,11 @@ export function App({ initialPrompt, provider, model, autoRoute, yolo }: AppProp
         model={currentModel}
         cwd={cwd}
         tokenCount={tokenCount}
+        autoRoute={isAutoRoute}
       />
       <Box flexGrow={1} flexDirection="column" overflow="hidden">
         <MessageList messages={messages} />
       </Box>
-      {pendingConfirmation && (
-        <ToolConfirmation
-          toolName={pendingConfirmation.toolName}
-          args={pendingConfirmation.args}
-          onConfirm={handleConfirm}
-          onDeny={handleDeny}
-        />
-      )}
       <Composer
         onSubmit={handleSubmit}
         isLoading={isLoading}

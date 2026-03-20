@@ -7,7 +7,7 @@ const cli = meow(
     $ 0mni [prompt]
 
   Options
-    --provider, -p  Provider to use (claude, gemini, openai)
+    --provider, -p  Provider to use (claude, gemini, codex)
     --model, -m     Model name override
     --auto          Enable auto-routing between providers
     --yolo          Auto-approve all tool calls (skip confirmations)

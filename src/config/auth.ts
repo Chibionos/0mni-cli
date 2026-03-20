@@ -1,31 +1,41 @@
+import { execSync } from 'node:child_process';
 import type { Provider } from './defaults.js';
 
-const PROVIDER_ENV_KEYS: Record<Provider, string[]> = {
-  claude: ['ANTHROPIC_API_KEY'],
-  gemini: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
-  openai: ['OPENAI_API_KEY'],
+/** Maps each provider to the CLI binary name used to check availability */
+const PROVIDER_CLI: Record<Provider, string> = {
+  claude: 'claude',
+  gemini: 'gemini',
+  codex: 'codex',
 };
 
-function getKey(provider: Provider): string | undefined {
-  for (const key of PROVIDER_ENV_KEYS[provider]) {
-    const val = process.env[key];
-    if (val) return val;
+/**
+ * Checks if a CLI binary is available on the system PATH.
+ */
+function cliExists(bin: string): boolean {
+  try {
+    execSync(`command -v ${bin}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
   }
-  return undefined;
 }
 
+/**
+ * Returns the list of providers whose CLI tools are installed.
+ */
 export function getAvailableProviders(): Provider[] {
-  return (Object.keys(PROVIDER_ENV_KEYS) as Provider[]).filter(
-    (p) => getKey(p) !== undefined,
+  return (Object.keys(PROVIDER_CLI) as Provider[]).filter((p) =>
+    cliExists(PROVIDER_CLI[p]),
   );
 }
 
-export function validateAuth(provider: Provider): void {
-  if (getKey(provider)) return;
-
-  const keys = PROVIDER_ENV_KEYS[provider];
-  const keyList = keys.join(' or ');
+/**
+ * Throws if the CLI for the given provider is not installed.
+ */
+export function validateCLI(provider: Provider): void {
+  const bin = PROVIDER_CLI[provider];
+  if (cliExists(bin)) return;
   throw new Error(
-    `No API key found for ${provider}. Set ${keyList} in your environment.`,
+    `CLI "${bin}" not found. Install the ${provider} CLI to use this provider.`,
   );
 }

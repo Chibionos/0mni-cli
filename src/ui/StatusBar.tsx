@@ -6,7 +6,14 @@ export interface StatusBarProps {
   model: string;
   cwd: string;
   tokenCount?: number;
+  autoRoute?: boolean;
 }
+
+const PROVIDER_COLORS: Record<string, string> = {
+  claude: 'blue',
+  gemini: 'green',
+  codex: 'yellow',
+};
 
 function abbreviatePath(fullPath: string): string {
   const home = process.env['HOME'] ?? '';
@@ -16,8 +23,9 @@ function abbreviatePath(fullPath: string): string {
   return fullPath;
 }
 
-export function StatusBar({ provider, model, cwd, tokenCount }: StatusBarProps) {
+export function StatusBar({ provider, model, cwd, tokenCount, autoRoute }: StatusBarProps) {
   const displayPath = abbreviatePath(cwd);
+  const dotColor = PROVIDER_COLORS[provider] ?? 'white';
 
   return (
     <Box
@@ -33,9 +41,15 @@ export function StatusBar({ provider, model, cwd, tokenCount }: StatusBarProps) 
     >
       <Box gap={2}>
         <Text bold color="cyan">0mni</Text>
-        <Text dimColor>
-          {provider} · {model}
-        </Text>
+        <Box gap={1}>
+          <Text color={dotColor}>{'\u25CF'}</Text>
+          <Text dimColor>
+            {provider} · {model}
+          </Text>
+        </Box>
+        {autoRoute && (
+          <Text color="magenta">[auto]</Text>
+        )}
       </Box>
       <Box gap={2}>
         <Text dimColor>{displayPath}</Text>
